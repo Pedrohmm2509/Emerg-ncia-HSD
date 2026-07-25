@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plantão Emergência — HSD</title>
+<style>
+  :root{
+    --bg:#f3f6f8; --panel:#ffffff; --text:#17212b; --muted:#66717d;
+    --line:#dbe2e8; --primary:#145c68; --primary2:#0f4852;
+    --danger:#b42318; --warning:#b54708; --ok:#067647; --info:#175cd3;
+    --shadow:0 8px 24px rgba(16,24,40,.08); --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+  button,input,select,textarea{font:inherit}
+  button{cursor:pointer}
+  .app{max-width:1500px;margin:auto;padding:14px}
+  .topbar{
+    background:linear-gradient(135deg,var(--primary2),var(--primary));
+    color:#fff;border-radius:20px;padding:18px 20px;box-shadow:var(--shadow)
+  }
+  .toprow{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+  .title h1{margin:0;font-size:clamp(20px,3vw,30px)}
+  .title p{margin:5px 0 0;opacity:.85}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{border:0;border-radius:11px;padding:10px 13px;font-weight:700}
+  .btn-primary{background:#fff;color:var(--primary2)}
+  .btn-soft{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.25)}
+  .btn-dark{background:var(--primary);color:white}
+  .btn-outline{background:white;border:1px solid var(--line);color:var(--text)}
+  .btn-danger{background:#fee4e2;color:var(--danger)}
+  .stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:9px;margin-top:16px}
+  .stat{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:10px;border-radius:13px}
+  .stat b{display:block;font-size:22px}.stat span{font-size:12px;opacity:.85}
+  .toolbar{display:flex;align-items:center;gap:8px;margin:14px 0;flex-wrap:wrap}
+  .tabs{display:flex;gap:7px;flex-wrap:wrap}
+  .tab{border:1px solid var(--line);background:white;padding:9px 13px;border-radius:999px;font-weight:700}
+  .tab.active{background:var(--primary);color:white;border-color:var(--primary)}
+  .spacer{flex:1}
+  .search{min-width:240px;border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:white}
+  .section{margin-top:18px}
+  .section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .section h2{font-size:18px;margin:0}
+  .occupancy{color:var(--muted);font-size:13px}
+  .beds{display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:12px}
+  .bed{
+    min-height:190px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;box-shadow:0 3px 10px rgba(16,24,40,.04);display:flex;flex-direction:column;gap:9px
+  }
+  .bed.free{justify-content:center;align-items:center;text-align:center;border-style:dashed;background:#fafcfd}
+  .bed-top{display:flex;justify-content:space-between;align-items:start;gap:8px}
+  .bed-label{font-weight:800;font-size:14px;color:var(--primary)}
+  .badge{font-size:11px;font-weight:800;border-radius:999px;padding:5px 8px;white-space:nowrap}
+  .b-critical{background:#fee4e2;color:var(--danger)}
+  .b-review{background:#fff1e8;color:var(--warning)}
+  .b-wait{background:#eff8ff;color:var(--info)}
+  .b-stable{background:#ecfdf3;color:var(--ok)}
+  .b-finish{background:#f2f4f7;color:#475467}
+  .patient{font-size:17px;font-weight:800;line-height:1.2}
+  .mainissue{font-size:14px;line-height:1.35}
+  .pending{font-size:13px;background:#fff8e8;border-left:4px solid #f79009;padding:8px;border-radius:8px}
+  .last{font-size:12px;color:var(--muted);margin-top:auto}
+  .card-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .mini{border:1px solid var(--line);background:white;border-radius:9px;padding:7px 9px;font-size:12px;font-weight:700}
+  .mini.mic{background:#eaf7f7;color:var(--primary2);border-color:#b9dddd}
+  .empty-icon{font-size:30px;opacity:.45}.free small{color:var(--muted)}
+  .priority-board{display:none;grid-template-columns:repeat(3,1fr);gap:12px}
+  .priority-col{background:white;border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+  .priority-col h3{margin:0 0 10px;font-size:15px}
+  .priority-item{padding:9px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+  .priority-item b{display:block}.priority-item small{color:var(--muted)}
+  .overlay{position:fixed;inset:0;background:rgba(11,18,24,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:100}
+  .modal{width:min(680px,100%);max-height:92vh;overflow:auto;background:white;border-radius:20px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.25)}
+  .modal.wide{width:min(900px,100%)}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .modal h2{margin:0;font-size:20px}.close{border:0;background:#f2f4f7;border-radius:10px;width:36px;height:36px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  label{display:block;font-size:13px;font-weight:700;margin-bottom:5px}
+  input,select,textarea{width:100%;border:1px solid #cfd8df;border-radius:10px;padding:10px;background:white}
+  textarea{min-height:110px;resize:vertical}
+  .field{margin-bottom:12px}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .voicebar{display:flex;align-items:center;gap:9px;margin-top:8px;flex-wrap:wrap}
+  .voice-state{font-size:12px;color:var(--muted)}
+  .timeline{border-left:3px solid #b9c9cf;margin-left:7px;padding-left:17px}
+  .event{position:relative;margin-bottom:16px}
+  .event:before{content:"";position:absolute;left:-24px;top:5px;width:11px;height:11px;border-radius:50%;background:var(--primary)}
+  .event-head{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)}
+  .event-type{font-weight:800;color:var(--primary)}
+  .event-body{white-space:pre-wrap;margin-top:4px;line-height:1.4}
+  .handoff{white-space:pre-wrap;background:#f8fafb;border:1px solid var(--line);padding:14px;border-radius:12px;line-height:1.45}
+  .toast{position:fixed;right:18px;bottom:18px;background:#17212b;color:white;padding:12px 15px;border-radius:11px;display:none;z-index:200}
+  .sync-note{font-size:12px;color:#fff;opacity:.75;margin-top:8px}
+  @media(max-width:1200px){.beds{grid-template-columns:repeat(3,minmax(220px,1fr))}.stats{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:760px){
+    .app{padding:8px}.topbar{border-radius:14px;padding:14px}
+    .beds{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}
+    .grid2{grid-template-columns:1fr}.search{min-width:100%}.priority-board{grid-template-columns:1fr}
+    .actions .btn{flex:1}
+  }
+</style>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#145c68">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Emergência HSD">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="toprow">
+      <div class="title">
+        <h1>Plantão — Emergência HSD</h1>
+        <p>Grande Sala · UCA · registros rápidos e pendências</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="openQuickPatient()">+ Adicionar paciente</button>
+        <button class="btn btn-soft" onclick="openHandoff()">Passagem de plantão</button>
+        <button class="btn btn-soft" onclick="openDataMenu()">Dados</button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="stActive">0</b><span>Pacientes ativos</span></div>
+      <div class="stat"><b id="stFree">17</b><span>Leitos livres</span></div>
+      <div class="stat"><b id="stCritical">0</b><span>Críticos</span></div>
+      <div class="stat"><b id="stReview">0</b><span>Reavaliar</span></div>
+      <div class="stat"><b id="stPending">0</b><span>Com pendências</span></div>
+      <div class="stat"><b id="stUpdated">—</b><span>Última atualização</span></div>
+    </div>
+    <div class="sync-note">Armazenamento local ativo. Estrutura preparada para sincronização em nuvem na próxima etapa.</div>
+  </header>
+
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-view="all" onclick="setView('all',this)">Todos</button>
+      <button class="tab" data-view="gs" onclick="setView('gs',this)">Grande Sala</button>
+      <button class="tab" data-view="uca" onclick="setView('uca',this)">UCA</button>
+      <button class="tab" data-view="priority" onclick="setView('priority',this)">Prioridades</button>
+    </div>
+    <div class="spacer"></div>
+    <input class="search" id="search" placeholder="Buscar paciente, leito ou pendência…" oninput="render()" />
+  </div>
+
+  <main id="bedsView">
+    <section class="section" id="gsSection">
+      <div class="section-head"><h2>Grande Sala</h2><span class="occupancy" id="gsOcc"></span></div>
+      <div class="beds" id="gsBeds"></div>
+    </section>
+    <section class="section" id="ucaSection">
+      <div class="section-head"><h2>UCA</h2><span class="occupancy" id="ucaOcc"></span></div>
+      <div class="beds" id="ucaBeds"></div>
+    </section>
+  </main>
+
+  <div class="priority-board" id="priorityBoard">
+    <div class="priority-col"><h3>🔴 Críticos</h3><div id="pCritical"></div></div>
+    <div class="priority-col"><h3>🟠 Reavaliar</h3><div id="pReview"></div></div>
+    <div class="priority-col"><h3>🔵 Aguardando / pendências</h3><div id="pPending"></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="patientModal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="patientModalTitle">Cadastrar paciente</h2><button class="close" onclick="closeModal('patientModal')">✕</button></div>
+    <input type="hidden" id="editBed" />
+    <div class="grid2">
+      <div class="field"><label>Leito</label><select id="patientBed"></select></div>
+      <div class="field"><label>Nome ou identificação</label><input id="patientName" placeholder="Ex.: Maria S." /></div>
+      <div class="field"><label>Idade</label><input id="patientAge" inputmode="numeric" placeholder="Ex.: 68" /></div>
+      <div class="field"><label>Situação</label>
+        <select id="patientStatus">
+          <option value="stable">Estável</option>
+          <option value="wait">Aguardando exame/parecer</option>
+          <option value="review">Reavaliar</option>
+          <option value="critical">Crítico</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Motivo principal / diagnóstico de trabalho</label><input id="patientIssue" placeholder="Ex.: Dor torácica em investigação" /></div>
+    <div class="field"><label>Pendência principal</label><input id="patientPending" placeholder="Ex.: Troponina de controle às 18:00" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('patientModal')">Cancelar</button>
+      <button class="btn btn-dark" onclick="savePatient()">Salvar paciente</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="noteModal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="noteTitle">Novo registro</h2><button class="close" onclick="closeModal('noteModal')">✕</button></div>
+    <input type="hidden" id="noteBed" />
+    <div class="grid2">
+      <div class="field"><label>Tipo de registro</label>
+        <select id="noteType">
+          <option>Avaliação inicial</option><option>Reavaliação</option><option>Resultado de exame</option>
+          <option>Conduta</option><option>Intercorrência</option><option>Parecer / discussão</option>
+          <option>Pendência</option><option>Destino</option>
+        </select>
+      </div>
+      <div class="field"><label>Atualizar situação do paciente</label>
+        <select id="noteStatus">
+          <option value="">Manter situação atual</option><option value="stable">Estável</option>
+          <option value="wait">Aguardando exame/parecer</option><option value="review">Reavaliar</option>
+          <option value="critical">Crítico</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Registro clínico</label>
+      <textarea id="noteText" placeholder="Digite ou use o microfone para registrar avaliação, resultados, condutas e impressões…"></textarea>
+      <div class="voicebar">
+        <button class="btn btn-outline" id="micBtn" onclick="toggleVoice()">🎙️ Iniciar ditado</button>
+        <span class="voice-state" id="voiceState">O ditado depende do suporte do navegador.</span>
+      </div>
+    </div>
+    <div class="field"><label>Nova pendência principal (opcional)</label><input id="notePending" placeholder="Substitui a pendência exibida no cartão" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('noteModal')">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveNote()">Salvar registro</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="timelineModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2 id="timelineTitle">Linha do tempo</h2><button class="close" onclick="closeModal('timelineModal')">✕</button></div>
+    <div id="timelineContent"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="editCurrentPatient()">Editar cadastro</button>
+      <button class="btn btn-outline" onclick="moveCurrentPatient()">Transferir leito</button>
+      <button class="btn btn-danger" onclick="finishCurrentPatient()">Finalizar atendimento</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="handoffModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>Passagem de plantão</h2><button class="close" onclick="closeModal('handoffModal')">✕</button></div>
+    <div class="handoff" id="handoffText"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="copyHandoff()">Copiar texto</button>
+      <button class="btn btn-dark" onclick="closeModal('handoffModal')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="dataModal">
+  <div class="modal">
+    <div class="modal-head"><h2>Dados do plantão</h2><button class="close" onclick="closeModal('dataModal')">✕</button></div>
+    <p style="color:var(--muted);line-height:1.45">Exporte um arquivo JSON para cópia de segurança ou importe-o em outro navegador. A sincronização automática em nuvem será conectada na próxima etapa.</p>
+    <div class="modal-actions" style="justify-content:flex-start">
+      <button class="btn btn-dark" onclick="exportJSON()">Exportar JSON</button>
+      <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">Importar JSON</button>
+      <button class="btn btn-outline" onclick="copyJSON()">Copiar JSON</button>
+      <button class="btn btn-danger" onclick="resetAll()">Limpar plantão</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden onchange="importJSON(event)" />
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const BEDS = [...Array.from({length:5},(_,i)=>`GS ${String(i+1).padStart(2,'0')}`),
+              ...Array.from({length:12},(_,i)=>`UCA ${String(i+1).padStart(2,'0')}`)];
+let state = loadState();
+let currentView = 'all';
+let currentBed = null;
+let recognition = null;
+let listening = false;
+
+function emptyState(){ return {patients:{}, updatedAt:null}; }
+function loadState(){
+  try{
+    const raw=localStorage.getItem('hsdEmergencyMVP');
+    const parsed=raw?JSON.parse(raw):emptyState();
+    if(!parsed.patients) parsed.patients={};
+    return parsed;
+  }catch(e){ return emptyState(); }
+}
+function persist(){
+  state.updatedAt=new Date().toISOString();
+  localStorage.setItem('hsdEmergencyMVP',JSON.stringify(state));
+  render();
+}
+window.addEventListener('storage',e=>{
+  if(e.key==='hsdEmergencyMVP'){state=loadState();render();toast('Dados atualizados em outra aba.');}
+});
+
+function fmtTime(iso){
+  if(!iso) return '—';
+  return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtDateTime(iso){
+  return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function statusMeta(status){
+  return {
+    critical:['Crítico','b-critical'],review:['Reavaliar','b-review'],
+    wait:['Aguardando','b-wait'],stable:['Estável','b-stable'],finish:['Finalizado','b-finish']
+  }[status]||['Estável','b-stable'];
+}
+function setView(view,el){
+  currentView=view;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===el));
+  render();
+}
+function render(){
+  const q=(document.getElementById('search')?.value||'').toLowerCase();
+  const active=Object.values(state.patients).filter(p=>!p.finished);
+  document.getElementById('stActive').textContent=active.length;
+  document.getElementById('stFree').textContent=17-active.length;
+  document.getElementById('stCritical').textContent=active.filter(p=>p.status==='critical').length;
+  document.getElementById('stReview').textContent=active.filter(p=>p.status==='review').length;
+  document.getElementById('stPending').textContent=active.filter(p=>p.pending?.trim()).length;
+  document.getElementById('stUpdated').textContent=fmtTime(state.updatedAt);
+
+  const gsActive=active.filter(p=>p.bed.startsWith('GS')).length;
+  const ucaActive=active.filter(p=>p.bed.startsWith('UCA')).length;
+  document.getElementById('gsOcc').textContent=`${gsActive}/5 ocupados`;
+  document.getElementById('ucaOcc').textContent=`${ucaActive}/12 ocupados`;
+
+  document.getElementById('bedsView').style.display=currentView==='priority'?'none':'block';
+  document.getElementById('priorityBoard').style.display=currentView==='priority'?'grid':'none';
+  document.getElementById('gsSection').style.display=(currentView==='uca'||currentView==='priority')?'none':'block';
+  document.getElementById('ucaSection').style.display=(currentView==='gs'||currentView==='priority')?'none':'block';
+
+  renderBeds('GS',document.getElementById('gsBeds'),q);
+  renderBeds('UCA',document.getElementById('ucaBeds'),q);
+  renderPriorities();
+}
+function renderBeds(prefix,container,q){
+  container.innerHTML='';
+  BEDS.filter(b=>b.startsWith(prefix)).forEach(bed=>{
+    const p=state.patients[bed];
+    if(q && p && !(`${bed} ${p.name} ${p.age} ${p.issue} ${p.pending}`.toLowerCase().includes(q))) return;
+    if(q && !p) return;
+    const el=document.createElement('div');
+    if(!p || p.finished){
+      el.className='bed free';
+      el.innerHTML=`<div class="empty-icon">＋</div><b>${bed}</b><small>Leito livre</small><button class="mini" onclick="openPatient('${bed}')">Cadastrar paciente</button>`;
+    }else{
+      const [st,cls]=statusMeta(p.status);
+      el.className='bed';
+      el.innerHTML=`
+        <div class="bed-top"><span class="bed-label">${bed}</span><span class="badge ${cls}">${st}</span></div>
+        <div class="patient">${esc(p.name)}${p.age?`, ${esc(p.age)} anos`:''}</div>
+        <div class="mainissue">${esc(p.issue||'Sem motivo principal registrado')}</div>
+        ${p.pending?`<div class="pending"><b>Pendência:</b> ${esc(p.pending)}</div>`:''}
+        <div class="last">Última atualização: ${fmtTime(p.updatedAt)}</div>
+        <div class="card-actions">
+          <button class="mini mic" onclick="openNote('${bed}')">🎙️ Registrar</button>
+          <button class="mini" onclick="openTimeline('${bed}')">Linha do tempo</button>
+        </div>`;
+    }
+    container.appendChild(el);
+  });
+}
+function renderPriorities(){
+  const active=Object.values(state.patients).filter(p=>!p.finished);
+  fillPriority('pCritical',active.filter(p=>p.status==='critical'));
+  fillPriority('pReview',active.filter(p=>p.status==='review'));
+  fillPriority('pPending',active.filter(p=>p.pending || p.status==='wait'));
+}
+function fillPriority(id,list){
+  const el=document.getElementById(id);
+  el.innerHTML=list.length?list.map(p=>`<div class="priority-item" onclick="openTimeline('${p.bed}')"><b>${p.bed} — ${esc(p.name)}</b><small>${esc(p.pending||p.issue||'')}</small></div>`).join(''):'<small style="color:var(--muted)">Nenhum paciente.</small>';
+}
+function populateBeds(selected=''){
+  const sel=document.getElementById('patientBed');
+  sel.innerHTML=BEDS.map(b=>{
+    const occupied=state.patients[b]&&!state.patients[b].finished&&b!==selected;
+    return `<option value="${b}" ${b===selected?'selected':''} ${occupied?'disabled':''}>${b}${occupied?' — ocupado':''}</option>`;
+  }).join('');
+}
+function openQuickPatient(){
+  const free=BEDS.find(b=>!state.patients[b]||state.patients[b].finished);
+  if(!free){toast('Todos os leitos estão ocupados.');return;}
+  openPatient(free);
+}
+function openPatient(bed){
+  populateBeds(bed);
+  document.getElementById('patientModalTitle').textContent='Cadastrar paciente';
+  document.getElementById('editBed').value='';
+  document.getElementById('patientName').value='';
+  document.getElementById('patientAge').value='';
+  document.getElementById('patientIssue').value='';
+  document.getElementById('patientPending').value='';
+  document.getElementById('patientStatus').value='stable';
+  showModal('patientModal');
+}
+function editPatient(bed){
+  const p=state.patients[bed]; if(!p)return;
+  populateBeds(bed);
+  document.getElementById('patientModalTitle').textContent=`Editar ${bed}`;
+  document.getElementById('editBed').value=bed;
+  document.getElementById('patientBed').value=bed;
+  document.getElementById('patientName').value=p.name||'';
+  document.getElementById('patientAge').value=p.age||'';
+  document.getElementById('patientIssue').value=p.issue||'';
+  document.getElementById('patientPending').value=p.pending||'';
+  document.getElementById('patientStatus').value=p.status||'stable';
+  showModal('patientModal');
+}
+function savePatient(){
+  const target=document.getElementById('patientBed').value;
+  const old=document.getElementById('editBed').value;
+  const name=document.getElementById('patientName').value.trim();
+  if(!name){toast('Informe ao menos o nome ou identificação.');return;}
+  if(old && old!==target){
+    state.patients[target]=state.patients[old];
+    delete state.patients[old];
+  }
+  const existing=state.patients[target]||{events:[],createdAt:new Date().toISOString()};
+  state.patients[target]={
+    ...existing,bed:target,name,age:document.getElementById('patientAge').value.trim(),
+    issue:document.getElementById('patientIssue').value.trim(),
+    pending:document.getElementById('patientPending').value.trim(),
+    status:document.getElementById('patientStatus').value,finished:false,updatedAt:new Date().toISOString()
+  };
+  if(!existing.events?.length){
+    state.patients[target].events=[{type:'Cadastro',text:`Paciente cadastrado em ${target}.`,at:new Date().toISOString()}];
+  }
+  closeModal('patientModal');persist();toast('Paciente salvo.');
+}
+function openNote(bed){
+  const p=state.patients[bed]; if(!p)return;
+  document.getElementById('noteBed').value=bed;
+  document.getElementById('noteTitle').textContent=`Novo registro — ${bed}`;
+  document.getElementById('noteText').value='';
+  document.getElementById('notePending').value='';
+  document.getElementById('noteStatus').value='';
+  document.getElementById('noteType').value='Reavaliação';
+  showModal('noteModal');
+}
+function saveNote(){
+  const bed=document.getElementById('noteBed').value,p=state.patients[bed];
+  const text=document.getElementById('noteText').value.trim();
+  if(!text){toast('Digite ou dite o registro clínico.');return;}
+  const at=new Date().toISOString();
+  p.events=p.events||[];
+  p.events.unshift({type:document.getElementById('noteType').value,text,at});
+  const ns=document.getElementById('noteStatus').value;if(ns)p.status=ns;
+  const np=document.getElementById('notePending').value.trim();if(np)p.pending=np;
+  p.updatedAt=at;
+  closeModal('noteModal');persist();toast('Registro salvo.');
+}
+function openTimeline(bed){
+  currentBed=bed;
+  const p=state.patients[bed]; if(!p)return;
+  document.getElementById('timelineTitle').textContent=`${bed} — ${p.name}`;
+  document.getElementById('timelineContent').innerHTML=`
+    <div style="margin-bottom:16px">
+      <b>${esc(p.issue||'Sem diagnóstico de trabalho')}</b><br>
+      <small style="color:var(--muted)">${p.pending?`Pendência atual: ${esc(p.pending)}`:'Sem pendência principal registrada'}</small>
+    </div>
+    <div class="timeline">${(p.events||[]).map(e=>`
+      <div class="event">
+        <div class="event-head"><span class="event-type">${esc(e.type)}</span><span>${fmtDateTime(e.at)}</span></div>
+        <div class="event-body">${esc(e.text)}</div>
+      </div>`).join('')||'<small>Sem registros.</small>'}</div>`;
+  showModal('timelineModal');
+}
+function editCurrentPatient(){closeModal('timelineModal');editPatient(currentBed);}
+function moveCurrentPatient(){
+  const p=state.patients[currentBed]; if(!p)return;
+  closeModal('timelineModal');editPatient(currentBed);
+}
+function finishCurrentPatient(){
+  const p=state.patients[currentBed]; if(!p)return;
+  if(!confirm(`Finalizar atendimento de ${p.name}?`))return;
+  p.finished=true;p.status='finish';p.updatedAt=new Date().toISOString();
+  p.events=p.events||[];p.events.unshift({type:'Destino',text:'Atendimento finalizado e leito liberado.',at:p.updatedAt});
+  closeModal('timelineModal');persist();toast('Atendimento finalizado.');
+}
+function openHandoff(){
+  const act=Object.values(state.patients).filter(p=>!p.finished).sort((a,b)=>a.bed.localeCompare(b.bed));
+  const by=(prefix)=>act.filter(p=>p.bed.startsWith(prefix));
+  const block=(title,list)=>`${title}\n${list.length?list.map(p=>{
+    const st=statusMeta(p.status)[0];
+    const last=(p.events||[])[0];
+    return `${p.bed} — ${p.name}${p.age?`, ${p.age} anos`:''}\n${p.issue||'Sem diagnóstico de trabalho'}\nSituação: ${st}${p.pending?` | Pendência: ${p.pending}`:''}${last?`\nÚltimo registro: ${last.text}`:''}`;
+  }).join('\n\n'):'Sem pacientes ativos.'}`;
+  document.getElementById('handoffText').textContent=`PASSAGEM DE PLANTÃO — EMERGÊNCIA HSD\nGerada em ${new Date().toLocaleString('pt-BR')}\n\n${block('GRANDE SALA',by('GS'))}\n\n${block('UCA',by('UCA'))}`;
+  showModal('handoffModal');
+}
+async function copyHandoff(){await navigator.clipboard.writeText(document.getElementById('handoffText').textContent);toast('Passagem copiada.');}
+function openDataMenu(){showModal('dataModal');}
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`plantao-emergencia-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
+}
+async function copyJSON(){await navigator.clipboard.writeText(JSON.stringify(state));toast('JSON copiado.');}
+function importJSON(ev){
+  const file=ev.target.files[0];if(!file)return;
+  const r=new FileReader();r.onload=()=>{
+    try{const d=JSON.parse(r.result);if(!d.patients)throw 0;state=d;persist();closeModal('dataModal');toast('Dados importados.');}
+    catch(e){toast('Arquivo JSON inválido.');}
+  };r.readAsText(file);ev.target.value='';
+}
+function resetAll(){
+  if(!confirm('Apagar todos os pacientes e registros deste navegador?'))return;
+  state=emptyState();persist();closeModal('dataModal');toast('Plantão limpo.');
+}
+function showModal(id){document.getElementById(id).style.display='flex';}
+function closeModal(id){
+  document.getElementById(id).style.display='none';
+  if(id==='noteModal'&&listening) stopVoice();
+}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';clearTimeout(t._x);t._x=setTimeout(()=>t.style.display='none',2400);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+
+function initVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){document.getElementById('micBtn').disabled=true;document.getElementById('voiceState').textContent='Ditado não disponível neste navegador.';return;}
+  recognition=new SR();recognition.lang='pt-BR';recognition.continuous=true;recognition.interimResults=true;
+  recognition.onresult=e=>{
+    let final='',interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const tr=e.results[i][0].transcript;
+      if(e.results[i].isFinal) final+=tr+' '; else interim+=tr;
+    }
+    const ta=document.getElementById('noteText');
+    if(final) ta.value=(ta.value+' '+final).trim();
+    document.getElementById('voiceState').textContent=interim?`Ouvindo: ${interim}`:'Ouvindo…';
+  };
+  recognition.onerror=e=>{document.getElementById('voiceState').textContent=`Erro no ditado: ${e.error}`;stopVoice();}
+  recognition.onend=()=>{if(listening){try{recognition.start();}catch(e){}}}
+}
+function toggleVoice(){listening?stopVoice():startVoice();}
+function startVoice(){
+  if(!recognition)return;listening=true;
+  document.getElementById('micBtn').textContent='⏹️ Parar ditado';
+  document.getElementById('voiceState').textContent='Ouvindo…';
+  try{recognition.start();}catch(e){}
+}
+function stopVoice(){
+  listening=false;if(recognition)recognition.stop();
+  document.getElementById('micBtn').textContent='🎙️ Iniciar ditado';
+  document.getElementById('voiceState').textContent='Ditado encerrado.';
+}
+initVoice();render();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(console.error);
+  });
+}
+</script>
+
+</body>
+</html>
