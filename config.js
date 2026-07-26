@@ -2,6 +2,6 @@
 // A chave publicável/anon pode ficar no navegador quando as políticas RLS estão corretas.
 // NUNCA coloque aqui uma chave secret/service_role.
 window.HSD_CLOUD_CONFIG = {
-  supabaseUrl: "https://SEU-PROJETO.supabase.co",
-  supabasePublishableKey: "SUA-CHAVE-PUBLICAVEL"
+  supabaseUrl: "https://fpiomkhwwbzozwlxjeqp.supabase.co/rest/v1/",
+  supabasePublishableKey: "sb_publishable_hKHsklGBIOsUh8pryvD6dw_zqdOgKp4"
 };
