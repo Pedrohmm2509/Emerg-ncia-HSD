@@ -91,6 +91,16 @@
   .handoff{white-space:pre-wrap;background:#f8fafb;border:1px solid var(--line);padding:14px;border-radius:12px;line-height:1.45}
   .toast{position:fixed;right:18px;bottom:18px;background:#17212b;color:white;padding:12px 15px;border-radius:11px;display:none;z-index:200}
   .sync-note{font-size:12px;color:#fff;opacity:.75;margin-top:8px}
+
+  .sync-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .sync-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22)}
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:#fdb022}
+  .sync-dot.online{background:#32d583}.sync-dot.error{background:#f97066}.sync-dot.offline{background:#98a2b3}
+  .account-label{font-size:12px;opacity:.88;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .auth-help{font-size:12px;color:var(--muted);line-height:1.45;margin-top:10px}
+  .auth-error{display:none;background:#fee4e2;color:var(--danger);padding:9px;border-radius:9px;margin-bottom:12px;font-size:13px}
+  .config-warning{background:#fff1e8;border-left:4px solid #f79009;padding:10px;border-radius:9px;font-size:13px;line-height:1.45;margin-bottom:14px}
+
   @media(max-width:1200px){.beds{grid-template-columns:repeat(3,minmax(220px,1fr))}.stats{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:760px){
     .app{padding:8px}.topbar{border-radius:14px;padding:14px}
@@ -120,6 +130,7 @@
         <button class="btn btn-primary" onclick="openQuickPatient()">+ Adicionar paciente</button>
         <button class="btn btn-soft" onclick="openHandoff()">Passagem de plantão</button>
         <button class="btn btn-soft" onclick="openDataMenu()">Dados</button>
+        <button class="btn btn-soft" id="accountBtn" onclick="openAccount()">Entrar</button>
       </div>
     </div>
     <div class="stats">
@@ -130,7 +141,10 @@
       <div class="stat"><b id="stPending">0</b><span>Com pendências</span></div>
       <div class="stat"><b id="stUpdated">—</b><span>Última atualização</span></div>
     </div>
-    <div class="sync-note">Armazenamento local ativo. Estrutura preparada para sincronização em nuvem na próxima etapa.</div>
+    <div class="sync-line">
+      <span class="sync-pill"><span class="sync-dot offline" id="syncDot"></span><span id="syncStatus">Modo local</span></span>
+      <span class="account-label" id="accountLabel">Nenhuma conta conectada</span>
+    </div>
   </header>
 
   <div class="toolbar">
@@ -261,8 +275,40 @@
   </div>
 </div>
 
+
+<div class="overlay" id="authModal">
+  <div class="modal">
+    <div class="modal-head"><h2>Acesso e sincronização</h2><button class="close" onclick="closeModal('authModal')">✕</button></div>
+    <div class="config-warning" id="configWarning" style="display:none">
+      A conexão com a nuvem ainda não foi configurada. Preencha o arquivo <b>config.js</b> com o URL e a chave publicável do projeto Supabase.
+    </div>
+    <div class="auth-error" id="authError"></div>
+    <div id="signedOutPanel">
+      <div class="field"><label>E-mail</label><input id="authEmail" type="email" autocomplete="email" placeholder="seuemail@exemplo.com"></div>
+      <div class="field"><label>Senha</label><input id="authPassword" type="password" autocomplete="current-password" minlength="8" placeholder="Mínimo de 8 caracteres"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="continueLocal()">Continuar apenas neste aparelho</button>
+        <button class="btn btn-outline" onclick="signUp()">Criar conta</button>
+        <button class="btn btn-dark" onclick="signIn()">Entrar e sincronizar</button>
+      </div>
+      <div class="auth-help">Use a mesma conta no iPhone e nos computadores. O aplicativo mantém uma cópia local e sincroniza quando há internet.</div>
+    </div>
+    <div id="signedInPanel" style="display:none">
+      <p>Conta conectada: <b id="signedInEmail"></b></p>
+      <p class="auth-help">Alterações são salvas localmente e enviadas à nuvem. Nesta versão, a alteração mais recente prevalece quando dois aparelhos editam ao mesmo tempo.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="forceCloudLoad()">Baixar dados da nuvem</button>
+        <button class="btn btn-outline" onclick="forceCloudSave()">Enviar dados atuais</button>
+        <button class="btn btn-danger" onclick="signOut()">Sair da conta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
+<script src="./config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const BEDS = [...Array.from({length:5},(_,i)=>`GS ${String(i+1).padStart(2,'0')}`),
               ...Array.from({length:12},(_,i)=>`UCA ${String(i+1).padStart(2,'0')}`)];
@@ -271,6 +317,12 @@ let currentView = 'all';
 let currentBed = null;
 let recognition = null;
 let listening = false;
+let supabaseClient = null;
+let currentUser = null;
+let syncChannel = null;
+let cloudSaveTimer = null;
+let applyingRemoteState = false;
+let localOnlyChosen = false;
 
 function emptyState(){ return {patients:{}, updatedAt:null}; }
 function loadState(){
@@ -281,14 +333,220 @@ function loadState(){
     return parsed;
   }catch(e){ return emptyState(); }
 }
-function persist(){
-  state.updatedAt=new Date().toISOString();
+function persist(options={}){
+  if(!options.keepTimestamp) state.updatedAt=new Date().toISOString();
   localStorage.setItem('hsdEmergencyMVP',JSON.stringify(state));
   render();
+  if(!applyingRemoteState && !options.skipCloud) scheduleCloudSave();
 }
 window.addEventListener('storage',e=>{
   if(e.key==='hsdEmergencyMVP'){state=loadState();render();toast('Dados atualizados em outra aba.');}
 });
+
+
+function configured(){
+  const c=window.HSD_CLOUD_CONFIG||{};
+  return Boolean(c.supabaseUrl && c.supabasePublishableKey &&
+    !c.supabaseUrl.includes('SEU-PROJETO') &&
+    !c.supabasePublishableKey.includes('SUA-CHAVE'));
+}
+function setSyncStatus(text,kind='offline'){
+  const label=document.getElementById('syncStatus');
+  const dot=document.getElementById('syncDot');
+  if(label) label.textContent=text;
+  if(dot) dot.className=`sync-dot ${kind}`;
+}
+function updateAccountUI(){
+  const email=currentUser?.email||'';
+  document.getElementById('accountBtn').textContent=currentUser?'Conta':'Entrar';
+  document.getElementById('accountLabel').textContent=currentUser?email:'Nenhuma conta conectada';
+  document.getElementById('signedOutPanel').style.display=currentUser?'none':'block';
+  document.getElementById('signedInPanel').style.display=currentUser?'block':'none';
+  document.getElementById('signedInEmail').textContent=email;
+}
+function showAuthError(message){
+  const el=document.getElementById('authError');
+  el.textContent=message||'Não foi possível concluir a operação.';
+  el.style.display='block';
+}
+function clearAuthError(){
+  const el=document.getElementById('authError');
+  el.textContent='';el.style.display='none';
+}
+function openAccount(){
+  clearAuthError();
+  document.getElementById('configWarning').style.display=configured()?'none':'block';
+  updateAccountUI();
+  showModal('authModal');
+}
+function continueLocal(){
+  localOnlyChosen=true;
+  closeModal('authModal');
+  setSyncStatus('Somente neste aparelho','offline');
+}
+async function initCloud(){
+  updateAccountUI();
+  if(!configured()){
+    setSyncStatus('Nuvem não configurada','offline');
+    if(!localOnlyChosen) openAccount();
+    return;
+  }
+  try{
+    supabaseClient=window.supabase.createClient(
+      window.HSD_CLOUD_CONFIG.supabaseUrl,
+      window.HSD_CLOUD_CONFIG.supabasePublishableKey,
+      {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}
+    );
+    supabaseClient.auth.onAuthStateChange((_event,session)=>{
+      handleSession(session).catch(console.error);
+    });
+    const {data:{session},error}=await supabaseClient.auth.getSession();
+    if(error) throw error;
+    await handleSession(session);
+  }catch(err){
+    console.error(err);
+    setSyncStatus('Erro de conexão','error');
+    showAuthError(err.message);
+    openAccount();
+  }
+}
+async function handleSession(session){
+  const nextUser=session?.user||null;
+  const changed=currentUser?.id!==nextUser?.id;
+  currentUser=nextUser;
+  updateAccountUI();
+  if(!currentUser){
+    if(syncChannel && supabaseClient){await supabaseClient.removeChannel(syncChannel);syncChannel=null;}
+    setSyncStatus('Modo local','offline');
+    if(!localOnlyChosen) openAccount();
+    return;
+  }
+  setSyncStatus('Conectando…','offline');
+  if(changed){
+    await reconcileCloudState();
+    await subscribeCloudChanges();
+  }
+  setSyncStatus(navigator.onLine?'Sincronizado':'Offline — salvo local','online');
+  closeModal('authModal');
+}
+async function signIn(){
+  clearAuthError();
+  if(!configured()){showAuthError('Configure primeiro o arquivo config.js.');return;}
+  const email=document.getElementById('authEmail').value.trim();
+  const password=document.getElementById('authPassword').value;
+  if(!email||!password){showAuthError('Informe e-mail e senha.');return;}
+  setSyncStatus('Entrando…','offline');
+  const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error){setSyncStatus('Falha no login','error');showAuthError(error.message);}
+}
+async function signUp(){
+  clearAuthError();
+  if(!configured()){showAuthError('Configure primeiro o arquivo config.js.');return;}
+  const email=document.getElementById('authEmail').value.trim();
+  const password=document.getElementById('authPassword').value;
+  if(!email||password.length<8){showAuthError('Informe um e-mail e uma senha com pelo menos 8 caracteres.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}});
+  if(error){showAuthError(error.message);return;}
+  if(data.session){
+    toast('Conta criada e conectada.');
+  }else{
+    toast('Confira seu e-mail para confirmar a conta.');
+    showAuthError('Conta criada. Abra o e-mail de confirmação e depois volte ao aplicativo.');
+  }
+}
+async function signOut(){
+  if(!supabaseClient)return;
+  const {error}=await supabaseClient.auth.signOut();
+  if(error){showAuthError(error.message);return;}
+  closeModal('authModal');
+  toast('Conta desconectada. Os dados locais foram mantidos.');
+}
+function scheduleCloudSave(){
+  if(!supabaseClient||!currentUser)return;
+  clearTimeout(cloudSaveTimer);
+  setSyncStatus(navigator.onLine?'Salvando…':'Offline — pendente','offline');
+  cloudSaveTimer=setTimeout(()=>saveCloudState(false),700);
+}
+async function saveCloudState(showMessage=false){
+  if(!supabaseClient||!currentUser)return false;
+  if(!navigator.onLine){setSyncStatus('Offline — pendente','offline');return false;}
+  const payload={user_id:currentUser.id,state,updated_at:new Date().toISOString()};
+  const {error}=await supabaseClient.from('shift_states').upsert(payload,{onConflict:'user_id'});
+  if(error){
+    console.error(error);setSyncStatus('Erro ao sincronizar','error');
+    if(showMessage) toast('Falha ao enviar dados.');
+    return false;
+  }
+  setSyncStatus('Sincronizado','online');
+  if(showMessage) toast('Dados enviados à nuvem.');
+  return true;
+}
+async function getCloudRow(){
+  if(!supabaseClient||!currentUser)return null;
+  const {data,error}=await supabaseClient.from('shift_states')
+    .select('state,updated_at').eq('user_id',currentUser.id).maybeSingle();
+  if(error) throw error;
+  return data;
+}
+function isoMillis(value){const n=Date.parse(value||0);return Number.isFinite(n)?n:0;}
+async function reconcileCloudState(forceCloud=false){
+  if(!currentUser)return;
+  try{
+    const row=await getCloudRow();
+    if(!row){
+      await saveCloudState(false);
+      return;
+    }
+    const cloud=row.state||emptyState();
+    const cloudTime=Math.max(isoMillis(cloud.updatedAt),isoMillis(row.updated_at));
+    const localTime=isoMillis(state.updatedAt);
+    if(forceCloud || cloudTime>localTime){
+      applyingRemoteState=true;
+      state=cloud;
+      persist({keepTimestamp:true,skipCloud:true});
+      applyingRemoteState=false;
+      toast('Dados atualizados pela nuvem.');
+    }else if(localTime>cloudTime){
+      await saveCloudState(false);
+    }
+  }catch(err){
+    console.error(err);setSyncStatus('Erro ao carregar','error');
+  }
+}
+async function subscribeCloudChanges(){
+  if(!supabaseClient||!currentUser)return;
+  if(syncChannel) await supabaseClient.removeChannel(syncChannel);
+  syncChannel=supabaseClient.channel(`shift-${currentUser.id}`)
+    .on('postgres_changes',{
+      event:'*',schema:'public',table:'shift_states',
+      filter:`user_id=eq.${currentUser.id}`
+    },payload=>{
+      const remote=payload.new?.state;
+      if(!remote)return;
+      if(isoMillis(remote.updatedAt)>isoMillis(state.updatedAt)){
+        applyingRemoteState=true;
+        state=remote;
+        persist({keepTimestamp:true,skipCloud:true});
+        applyingRemoteState=false;
+        setSyncStatus('Atualizado de outro aparelho','online');
+        toast('Alteração recebida de outro aparelho.');
+      }
+    }).subscribe(status=>{
+      if(status==='SUBSCRIBED') setSyncStatus('Sincronizado','online');
+    });
+}
+async function forceCloudLoad(){
+  await reconcileCloudState(true);
+  closeModal('authModal');
+}
+async function forceCloudSave(){
+  await saveCloudState(true);
+  closeModal('authModal');
+}
+window.addEventListener('online',()=>{setSyncStatus(currentUser?'Reconectando…':'Modo local','offline');if(currentUser)reconcileCloudState();});
+window.addEventListener('offline',()=>setSyncStatus('Offline — salvo local','offline'));
+
 
 function fmtTime(iso){
   if(!iso) return '—';
@@ -543,7 +801,7 @@ function stopVoice(){
   document.getElementById('micBtn').textContent='🎙️ Iniciar ditado';
   document.getElementById('voiceState').textContent='Ditado encerrado.';
 }
-initVoice();render();
+initVoice();render();initCloud();
 </script>
 
 <script>

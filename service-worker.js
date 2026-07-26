@@ -1,9 +1,10 @@
 
-const CACHE = 'emergencia-hsd-v1';
+const CACHE = 'emergencia-hsd-v2-sync';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './config.js',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
